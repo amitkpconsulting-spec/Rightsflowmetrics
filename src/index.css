@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: hsl(0, 0%, 2%);
+    --foreground: hsl(0, 0%, 92%);
+    --card: hsl(0, 0%, 5%);
+    --card-foreground: hsl(0, 0%, 92%);
+    --popover: hsl(0, 0%, 5%);
+    --popover-foreground: hsl(0, 0%, 92%);
+    --primary: hsl(0, 80%, 42%);
+    --primary-foreground: hsl(0, 0%, 100%);
+    --secondary: hsl(0, 0%, 12%);
+    --secondary-foreground: hsl(0, 0%, 90%);
+    --muted: hsl(0, 0%, 10%);
+    --muted-foreground: hsl(0, 0%, 55%);
+    --accent: hsl(0, 70%, 30%);
+    --accent-foreground: hsl(0, 0%, 100%);
+    --destructive: hsl(0, 90%, 25%);
+    --destructive-foreground: hsl(0, 0%, 100%);
+    --border: hsl(0, 0%, 22%);
+    --input: hsl(0, 0%, 8%);
+    --ring: hsl(0, 80%, 42%);
+    --radius: 0rem;
+    --shadow-hard: 4px 4px 0px 0px #000000;
+  }
+
+  body {
+    background-color: #050505;
+    color: #EBEBEB;
+    font-family: 'JetBrains Mono', Courier New, Courier, monospace;
+    letter-spacing: 0.02em;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Custom Industrial Brutalist Utilities */
+.terminal-card {
+  background-color: #0c0c0c;
+  border: 1px solid #2d2d2d;
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+.terminal-header {
+  background: linear-gradient(180deg, #161616 0%, #0c0c0c 100%);
+  border-bottom: 1px solid #282828;
+}
+
+.terminal-badge-red {
+  background-color: rgba(193, 18, 18, 0.18);
+  color: #ff4d4d;
+  border: 1px solid rgba(193, 18, 18, 0.5);
+}
+
+.terminal-badge-gray {
+  background-color: #1a1a1a;
+  color: #d1d1d1;
+  border: 1px solid #333333;
+}
+
+.terminal-btn-primary {
+  background-color: #c11212;
+  color: #ffffff;
+  border: 1px solid #e61919;
+  box-shadow: 2px 2px 0px 0px #000000;
+  transition: all 0.15s ease;
+}
+.terminal-btn-primary:hover {
+  background-color: #d91818;
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+/* Custom Scrollbar for Terminal aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #080808;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b2b2b;
+  border-radius: 0px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c11212;
+}

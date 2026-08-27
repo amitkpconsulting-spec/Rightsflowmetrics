@@ -1,0 +1,6 @@
+{
+  "name": "RightsFlowMetrics",
+  "description": "Air-gapped regulatory compliance system for financial institutions with embedded SQLite WAL persistence, unique PIA ID ingestion engine, 5-pillar rights alignment (Data Usage, Movement, Storage, Notice, Cookies), statutory lawful basis engine, tamper-evident audit logs, and server health telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
