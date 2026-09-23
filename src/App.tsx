@@ -49,11 +49,14 @@ export function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [operatingMode, setOperatingModeState] = useState(api.getOperatingMode());
+  const [isAirGappedState, setIsAirGappedState] = useState(api.isAirGapped());
 
   // Modals
   const [selectedTicket, setSelectedTicket] = useState<DsrTicket | null>(null);
   const [showNewTicketModal, setShowNewTicketModal] = useState(false);
   const [showDataExchangeModal, setShowDataExchangeModal] = useState(false);
+  const [summaryInitialSlide, setSummaryInitialSlide] = useState<number>(0);
 
   const loadData = async () => {
     try {
@@ -74,10 +77,18 @@ export function App() {
 
   useEffect(() => {
     loadData();
+    const unsubscribe = api.onOperatingModeChange((newMode, isAirGappedVal) => {
+      setOperatingModeState(newMode);
+      setIsAirGappedState(isAirGappedVal);
+      loadData();
+    });
     const interval = setInterval(() => {
       loadData();
     }, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   const handleToggleIdPause = async (ticket: DsrTicket) => {
@@ -102,7 +113,7 @@ export function App() {
 
   const navItems = [
     { id: 'dashboard' as const, label: 'Executive Dashboard', icon: LayoutDashboard },
-    { id: 'summary' as const, label: 'Summary Dashboard (16:9)', icon: Layers },
+    { id: 'summary' as const, label: 'Summary Dashboard', icon: Layers },
     { id: 'queue' as const, label: 'Operations Queue', icon: ListFilter, count: tickets.length },
     { id: 'pia' as const, label: 'Individual Rights Scanner', icon: Scan },
     { id: 'matrix' as const, label: 'Lawful Basis Matrix', icon: Scale },
@@ -208,15 +219,23 @@ export function App() {
         <div className="p-3 border-t border-[#222222] bg-[#080808]">
           <div className="bg-[#0D0D0D] p-3 border border-[#242424] space-y-1.5 shadow-[2px_2px_0px_0px_#000000]">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#808080] font-mono uppercase tracking-wider">Local Persistence</span>
-              <span className="bg-[#2B0505] text-[#FF4D4D] font-mono text-[9px] font-bold px-1.5 py-0.5 border border-[#821717]">
-                ACTIVE
+              <span className="text-[10px] text-[#808080] font-mono uppercase tracking-wider">
+                {operatingMode === 'frontend' ? 'Frontend Engine' : 'Node REST Server'}
+              </span>
+              <span className={`font-mono text-[9px] font-bold px-1.5 py-0.5 border ${
+                isAirGappedState
+                  ? 'bg-[#2B0505] text-[#FF4D4D] border-[#821717]'
+                  : 'bg-[#141414] text-[#A0A0A0] border-[#333333]'
+              }`}>
+                {isAirGappedState ? 'AIR-GAP ON' : 'CONNECTED'}
               </span>
             </div>
-            <p className="text-[11px] font-mono text-[#FF4D4D] italic">SQLITE_WAL_ENABLED</p>
+            <p className="text-[11px] font-mono text-[#FF4D4D] italic">
+              {operatingMode === 'frontend' ? 'IN_BROWSER_VIRTUAL_WAL' : 'SQLITE_WAL_SERVER'}
+            </p>
             <div className="text-[10px] text-[#707070] font-mono flex items-center justify-between pt-1 border-t border-[#1F1F1F]">
-              <span>PRAGMA synchronous</span>
-              <span className="text-[#A0A0A0]">NORMAL</span>
+              <span>Storage Enclave</span>
+              <span className="text-[#A0A0A0]">{operatingMode === 'frontend' ? 'LOCAL_STORAGE' : 'SQLITE_DISK'}</span>
             </div>
           </div>
         </div>
@@ -237,10 +256,18 @@ export function App() {
 
         {/* Scrollable View Area */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-7 space-y-6 bg-[#050505]">
-          {activeTab === 'dashboard' && <GDPRComplianceDashboard />}
+          {activeTab === 'dashboard' && (
+            <GDPRComplianceDashboard
+              onNavigateToSummary={(slideIdx = 0) => {
+                setSummaryInitialSlide(slideIdx);
+                setActiveTab('summary');
+              }}
+            />
+          )}
 
           {activeTab === 'summary' && (
             <SummaryDashboard
+              initialPage={summaryInitialSlide}
               tickets={tickets}
               health={health}
               onNavigateToTab={(tab: any) => setActiveTab(tab)}

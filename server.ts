@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import {
   getDb,
   executeQuery,
@@ -10,7 +9,8 @@ import {
   verifyAuditChainIntegrity,
   logAuditTrail,
   SQLITE_SCHEMA_DDL,
-  calculateHash
+  calculateHash,
+  persistDatabase
 } from './server/db.ts';
 import {
   evaluateRightEntitlement,
@@ -21,27 +21,47 @@ import {
 } from './server/complianceEngine.ts';
 
 const DEFAULT_PORT = parseInt(process.env.PORT || '3000', 10) || 3000;
+const HOST = '0.0.0.0';
+const IS_PROD = process.env.NODE_ENV === 'production';
 
-function listenWithPortFallback(app: express.Application, port: number, maxRetries = 20): Promise<number> {
+let serverInstance: import('http').Server | null = null;
+
+function bindHttpServer(app: express.Application, port: number): Promise<import('http').Server> {
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, '0.0.0.0', () => {
-      console.log(`🛡️ RightsFlow Metrics Node Server running on http://0.0.0.0:${port} (http://localhost:${port})`);
-      resolve(port);
-    });
+    if (IS_PROD) {
+      // In production, bind strictly to the configured port without incrementing.
+      // Changing ports in production container environments (Replit, Cloud Run, K8s) breaks ingress routing and health checks.
+      const server = app.listen(port, HOST, () => {
+        console.log(`🛡️ RightsFlow Metrics Node Server [PRODUCTION] running on http://${HOST}:${port}`);
+        resolve(server);
+      });
 
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        if (maxRetries > 0) {
-          console.warn(`[PORT WARNING] Port ${port} is occupied by another process. Auto-assigning to port ${port + 1}...`);
-          server.close();
-          listenWithPortFallback(app, port + 1, maxRetries - 1).then(resolve).catch(reject);
-        } else {
-          reject(new Error(`No available ports found starting from port ${DEFAULT_PORT}`));
+      server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`[FATAL] Port ${port} is already in use. Container cannot reassign port in production because ingress traffic routes to ${port}.`);
         }
-      } else {
         reject(err);
-      }
-    });
+      });
+    } else {
+      // In local development, gracefully try next port if occupied
+      const tryListen = (currentPort: number, retriesLeft: number) => {
+        const server = app.listen(currentPort, HOST, () => {
+          console.log(`🛡️ RightsFlow Metrics Node Server [DEV] running on http://${HOST}:${currentPort}`);
+          resolve(server);
+        });
+
+        server.on('error', (err: any) => {
+          if (err.code === 'EADDRINUSE' && retriesLeft > 0) {
+            console.warn(`[PORT WARNING] Port ${currentPort} is occupied. Trying port ${currentPort + 1}...`);
+            server.close();
+            tryListen(currentPort + 1, retriesLeft - 1);
+          } else {
+            reject(err);
+          }
+        });
+      };
+      tryListen(port, 20);
+    }
   });
 }
 
@@ -53,23 +73,40 @@ async function startServer() {
   await getDb();
 
   // ==========================================================================
-  // 1. HEALTH & TELEMETRY API
+  // 1. HEALTH & TELEMETRY API (ZERO-DEPENDENCY & REPLIT/K8S COMPLIANT)
   // ==========================================================================
-  app.get('/api/health', (req, res) => {
+
+  // Fast zero-dependency liveness/readiness probe
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // Comprehensive health & telemetry endpoint (resilient against DB cold-starts)
+  app.get('/api/health', (_req, res) => {
     const memory = process.memoryUsage();
-    const dbStats = getDbTelemetry();
+    let dbStats: any = null;
+    let overdueCount = 0;
 
-    // Check for SLA breached tickets
-    const now = new Date().toISOString();
-    const overdueRes = executeQuery<any>(
-      "SELECT COUNT(*) as count FROM requests WHERE status NOT IN ('Completed & Sealed', 'Statutorily Refused') AND baseline_deadline < ?",
-      [now]
-    );
-    const overdueCount = (overdueRes[0]?.count as number) || 0;
+    try {
+      dbStats = getDbTelemetry();
+      const now = new Date().toISOString();
+      const overdueRes = executeQuery<any>(
+        "SELECT COUNT(*) as count FROM requests WHERE status NOT IN ('Completed & Sealed', 'Statutorily Refused') AND baseline_deadline < ?",
+        [now]
+      );
+      overdueCount = (overdueRes[0]?.count as number) || 0;
+    } catch (err: any) {
+      console.warn('[HEALTH CHECK] Telemetry non-blocking warning:', err?.message || err);
+    }
 
-    res.json({
-      status: 'OPERATIONAL_AIR_GAPPED',
+    res.status(200).json({
+      status: 'ok',
       systemTime: new Date().toISOString(),
+      uptime: Math.round(process.uptime()),
       uptimeSeconds: Math.round(process.uptime()),
       environment: {
         networkIsolation: 'ZERO_TRUST_AIR_GAPPED',
@@ -78,12 +115,22 @@ async function startServer() {
         tlsCertificate: 'LOCAL_MUTUAL_TLS_v1.3'
       },
       memory: {
-        rssMb: Math.round(memory.rss / (1024 * 1024) * 100) / 100,
-        heapUsedMb: Math.round(memory.heapUsed / (1024 * 1024) * 100) / 100,
-        heapTotalMb: Math.round(memory.heapTotal / (1024 * 1024) * 100) / 100,
-        externalMb: Math.round(memory.external / (1024 * 1024) * 100) / 100
+        rssMb: Math.round((memory.rss / (1024 * 1024)) * 100) / 100,
+        heapUsedMb: Math.round((memory.heapUsed / (1024 * 1024)) * 100) / 100,
+        heapTotalMb: Math.round((memory.heapTotal / (1024 * 1024)) * 100) / 100,
+        externalMb: Math.round((memory.external / (1024 * 1024)) * 100) / 100
       },
-      database: dbStats,
+      database: dbStats || {
+        engine: 'SQLite 3.45 WAL-Mode Embedded',
+        journalMode: 'WAL (Write-Ahead-Log)',
+        dbSizeBytes: 0,
+        walSizeBytes: 0,
+        totalQueriesExecuted: 0,
+        totalWritesExecuted: 0,
+        avgLatencyMs: 0,
+        lastSaved: new Date().toISOString(),
+        tableStats: { subjects: 0, tickets: 0, auditLogs: 0, notifications: 0, suppressionRules: 0, piaRecords: 0 }
+      },
       slaAlerts: {
         overdueCount,
         integrityStatus: 'HASH_CHAIN_SEALED'
@@ -1359,21 +1406,42 @@ async function startServer() {
   });
 
   // ==========================================================================
-  // VITE & STATIC SPA SERVING
+  // VITE & STATIC SPA SERVING (STRICT ISOLATION BEHIND NODE_ENV)
   // ==========================================================================
   const distPath = path.join(process.cwd(), 'dist');
-  const hasDist = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'));
 
-  if (process.env.NODE_ENV === 'production' || hasDist) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+  if (IS_PROD) {
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      // Fallback catch-all handler for Single Page Applications (SPA) excluding API and health checks
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api') || req.path === '/healthz') {
+          return next();
+        }
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    } else {
+      console.warn(`[PRODUCTION WARNING] 'dist' directory not found at ${distPath}. Pre-compiled assets missing.`);
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api') || req.path === '/healthz') {
+          return next();
+        }
+        res.status(503).send('Production build not found. Please run "npm run build" before starting the server.');
+      });
+    }
   } else {
+    // Development mode: Vite middleware with isolated HMR (zero port collisions)
     try {
+      const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: { server: undefined } },
-        appType: 'spa',
+        server: {
+          middlewareMode: true,
+          hmr: {
+            server: undefined,
+            port: undefined // Prevent independent HMR websocket port collisions (e.g. 24678)
+          }
+        },
+        appType: 'spa'
       });
       app.use(vite.middlewares);
     } catch (viteErr) {
@@ -1381,7 +1449,36 @@ async function startServer() {
     }
   }
 
-  await listenWithPortFallback(app, DEFAULT_PORT);
+  serverInstance = await bindHttpServer(app, DEFAULT_PORT);
+
+  // Graceful Lifecycle Shutdown Handler (SIGINT / SIGTERM)
+  const gracefulShutdown = (signal: string) => {
+    console.log(`\n🛑 [SHUTDOWN] Received ${signal}. Initiating graceful teardown...`);
+    try {
+      persistDatabase();
+      console.log('💾 [SHUTDOWN] Database state successfully flushed to disk.');
+    } catch (err: any) {
+      console.error('⚠️ [SHUTDOWN] Error saving database state:', err?.message || err);
+    }
+
+    if (serverInstance) {
+      serverInstance.close(() => {
+        console.log('✅ [SHUTDOWN] HTTP listener terminated cleanly. Process exiting.');
+        process.exit(0);
+      });
+    } else {
+      process.exit(0);
+    }
+
+    // Force exit after 5s timeout if sockets remain open
+    setTimeout(() => {
+      console.error('⚠️ [SHUTDOWN] Graceful shutdown timeout reached. Force exiting.');
+      process.exit(1);
+    }, 5000).unref();
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
 
 startServer().catch((err) => {

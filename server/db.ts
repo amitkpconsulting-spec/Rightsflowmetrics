@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'compliance_records.sqlite');
 const WAL_LOG_FILE = path.join(DATA_DIR, 'compliance_records.wal.log');
 
@@ -15,8 +15,27 @@ let totalWritesExecuted = 0;
 const queryLatencyHistory: number[] = [];
 
 // Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (dirErr: any) {
+  console.warn(`[STORAGE WARNING] Unable to create data directory ${DATA_DIR}:`, dirErr?.message || dirErr);
+}
+
+// Architectural Storage Safeguard: Detect ephemeral container vs persistent disk
+const isEphemeralDeployment = Boolean(
+  process.env.REPLIT_DEPLOYMENT_TARGET === 'autoscale' ||
+  (process.env.NODE_ENV === 'production' && !process.env.PERSISTENT_DISK && !process.env.REPLIT_DB_URL)
+);
+
+if (isEphemeralDeployment) {
+  console.info(
+    '🛡️ [STORAGE ARCHITECTURE SAFEGUARD] Notice: Container running in stateless/autoscale mode.\n' +
+    '   Embedded SQLite files in ' + DATA_DIR + ' operate in memory with disk snapshots.\n' +
+    '   For persistent production durability on Replit, select deploymentTarget = "vm" (Reserved VM),\n' +
+    '   or attach a remote database adapter (e.g., Turso/libsql or Neon PostgreSQL).'
+  );
 }
 
 export const SQLITE_SCHEMA_DDL = `

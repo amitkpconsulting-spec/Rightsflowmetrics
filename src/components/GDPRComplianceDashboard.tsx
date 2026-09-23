@@ -261,7 +261,11 @@ const CustomChartTooltip = ({ active, payload, label }: any) => {
 // MAIN COMPONENT: GDPR COMPLIANCE DASHBOARD
 // ============================================================================
 
-export function GDPRComplianceDashboard() {
+export function GDPRComplianceDashboard({
+  onNavigateToSummary
+}: {
+  onNavigateToSummary?: (slideIdx?: number) => void;
+} = {}) {
   // Filter States
   const [selectedDept, setSelectedDept] = useState<Department>('All');
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange>('qtd');
@@ -537,7 +541,13 @@ export function GDPRComplianceDashboard() {
 
             {/* Launch 16:9 Summary Deck */}
             <button
-              onClick={() => setShowSummaryDeck(true)}
+              onClick={() => {
+                if (onNavigateToSummary) {
+                  onNavigateToSummary(0);
+                } else {
+                  setShowSummaryDeck(true);
+                }
+              }}
               className="px-3.5 py-1.5 bg-[#C11212] hover:bg-[#D91818] text-white rounded-xs text-xs font-bold flex items-center space-x-1.5 border border-[#E61919] shadow-[2px_2px_0px_0px_#000000] transition cursor-pointer"
               title="Open full-screen 16:9 page-by-page summary slide deck"
             >
@@ -653,8 +663,8 @@ export function GDPRComplianceDashboard() {
       {/* 3. SECTION A: LAWFUL BASES FOR PROCESSING (GDPR ARTICLE 6)          */}
       {/* ==================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* DONUT CHART: Lawful Basis Distribution */}
-        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#262626] rounded-xs p-5 shadow-[2px_2px_0px_0px_#000000] flex flex-col justify-between">
+        {/* DONUT CHART: Lawful Basis Distribution (Selected Element 1) */}
+        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#2A2A2A] hover:border-amber-500/60 rounded-xs p-5 shadow-[3px_3px_0px_0px_#000000] flex flex-col justify-between transition-all duration-200 border-t-2 border-t-amber-500 relative group">
           <div>
             <div className="flex items-center justify-between border-b border-[#262626] pb-3">
               <div className="flex items-center space-x-2.5">
@@ -666,9 +676,19 @@ export function GDPRComplianceDashboard() {
                   <p className="text-[11px] text-[#8C8C8C]">Breakdown of {totalProcessingActivities} processing activities in ROPA</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-bold">
-                28 LIAs Missing
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 font-bold">
+                  28 LIAs Missing
+                </span>
+                <button
+                  onClick={() => onNavigateToSummary ? onNavigateToSummary(0) : setShowSummaryDeck(true)}
+                  className="px-2 py-0.5 bg-[#141414] hover:bg-[#202020] text-amber-400 border border-[#333333] hover:border-amber-500/60 rounded text-[10px] font-mono font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="View this selected element in 16:9 Summary Deck Page 1"
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>16:9 Slide ↗</span>
+                </button>
+              </div>
             </div>
 
             <div className="h-64 w-full mt-3">
@@ -727,8 +747,8 @@ export function GDPRComplianceDashboard() {
           </div>
         </div>
 
-        {/* STACKED BAR CHART: Consent Health & Re-consent Risk */}
-        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#262626] rounded-xs p-5 shadow-[2px_2px_0px_0px_#000000] flex flex-col justify-between">
+        {/* STACKED BAR CHART: Consent Health & Re-consent Risk (Selected Element 2) */}
+        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#2A2A2A] hover:border-emerald-500/60 rounded-xs p-5 shadow-[3px_3px_0px_0px_#000000] flex flex-col justify-between transition-all duration-200 border-t-2 border-t-emerald-500 relative group">
           <div>
             <div className="flex items-center justify-between border-b border-[#262626] pb-3">
               <div className="flex items-center space-x-2.5">
@@ -740,9 +760,19 @@ export function GDPRComplianceDashboard() {
                   <p className="text-[11px] text-[#8C8C8C]">Valid opt-in vs expiring vs missing granular consent across BUs</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-bold">
-                Art. 7 Enforced
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-bold">
+                  Art. 7 Enforced
+                </span>
+                <button
+                  onClick={() => onNavigateToSummary ? onNavigateToSummary(1) : setShowSummaryDeck(true)}
+                  className="px-2 py-0.5 bg-[#141414] hover:bg-[#202020] text-emerald-400 border border-[#333333] hover:border-emerald-500/60 rounded text-[10px] font-mono font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="View this selected element in 16:9 Summary Deck Page 2"
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>16:9 Slide ↗</span>
+                </button>
+              </div>
             </div>
 
             <div className="h-64 w-full mt-3">
@@ -772,8 +802,8 @@ export function GDPRComplianceDashboard() {
       {/* 4. SECTION B: INDIVIDUAL RIGHTS & DSAR MANAGEMENT (ART. 12-22)       */}
       {/* ==================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* BAR CHART: Request Volume by Right */}
-        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#262626] rounded-xs p-5 shadow-[2px_2px_0px_0px_#000000] flex flex-col justify-between">
+        {/* BAR CHART: Request Volume by Right (Selected Element 3) */}
+        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#2A2A2A] hover:border-sky-500/60 rounded-xs p-5 shadow-[3px_3px_0px_0px_#000000] flex flex-col justify-between transition-all duration-200 border-t-2 border-t-sky-500 relative group">
           <div>
             <div className="flex items-center justify-between border-b border-[#262626] pb-3">
               <div className="flex items-center space-x-2.5">
@@ -785,9 +815,19 @@ export function GDPRComplianceDashboard() {
                   <p className="text-[11px] text-[#8C8C8C]">Total requests logged and on-time fulfillment rate</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/60 font-bold">
-                576 Total DSARs
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-800/60 font-bold">
+                  576 Total DSARs
+                </span>
+                <button
+                  onClick={() => onNavigateToSummary ? onNavigateToSummary(2) : setShowSummaryDeck(true)}
+                  className="px-2 py-0.5 bg-[#141414] hover:bg-[#202020] text-sky-400 border border-[#333333] hover:border-sky-500/60 rounded text-[10px] font-mono font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="View this selected element in 16:9 Summary Deck Page 3"
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>16:9 Slide ↗</span>
+                </button>
+              </div>
             </div>
 
             <div className="h-64 w-full mt-3">
@@ -822,8 +862,8 @@ export function GDPRComplianceDashboard() {
           </div>
         </div>
 
-        {/* COMPOSED / AREA CHART: SLA & Turnaround Compliance Trends */}
-        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#262626] rounded-xs p-5 shadow-[2px_2px_0px_0px_#000000] flex flex-col justify-between">
+        {/* COMPOSED / AREA CHART: SLA & Turnaround Compliance Trends (Selected Element 4) */}
+        <div className="lg:col-span-6 bg-[#0C0C0C] border border-[#2A2A2A] hover:border-indigo-500/60 rounded-xs p-5 shadow-[3px_3px_0px_0px_#000000] flex flex-col justify-between transition-all duration-200 border-t-2 border-t-indigo-500 relative group">
           <div>
             <div className="flex items-center justify-between border-b border-[#262626] pb-3">
               <div className="flex items-center space-x-2.5">
@@ -835,9 +875,19 @@ export function GDPRComplianceDashboard() {
                   <p className="text-[11px] text-[#8C8C8C]">Monthly resolution speed vs 30-day statutory SLA ceiling</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-bold">
-                18.2d Avg (↓35%)
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60 font-bold">
+                  18.2d Avg (↓35%)
+                </span>
+                <button
+                  onClick={() => onNavigateToSummary ? onNavigateToSummary(3) : setShowSummaryDeck(true)}
+                  className="px-2 py-0.5 bg-[#141414] hover:bg-[#202020] text-indigo-400 border border-[#333333] hover:border-indigo-500/60 rounded text-[10px] font-mono font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  title="View this selected element in 16:9 Summary Deck Page 4"
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>16:9 Slide ↗</span>
+                </button>
+              </div>
             </div>
 
             <div className="h-64 w-full mt-3">
