@@ -1,0 +1,14 @@
+# Railway / Nixpacks configuration for RightsFlow Metrics
+# Ensures Node 20 runtime, explicit npm install, and reliable build phase
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+cmds = ["npm ci --include=optional || npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

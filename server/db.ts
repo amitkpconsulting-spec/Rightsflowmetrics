@@ -4,9 +4,19 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const DB_FILE = path.join(DATA_DIR, 'compliance_records.sqlite');
-const WAL_LOG_FILE = path.join(DATA_DIR, 'compliance_records.wal.log');
+// Dynamic storage resolution: support mounted persistent volume (e.g. Railway Volume at /data/app.db or DATA_DIR)
+const DB_FILE = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.join(
+      process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(process.cwd(), 'data'),
+      'compliance_records.sqlite'
+    );
+
+const DATA_DIR = path.dirname(DB_FILE);
+const WAL_LOG_FILE = path.join(
+  DATA_DIR,
+  `${path.basename(DB_FILE, path.extname(DB_FILE))}.wal.log`
+);
 
 let dbInstance: Database | null = null;
 let lastDbSaveTime = Date.now();
@@ -14,10 +24,11 @@ let totalQueriesExecuted = 0;
 let totalWritesExecuted = 0;
 const queryLatencyHistory: number[] = [];
 
-// Ensure data directory exists
+// Ensure target storage directory exists synchronously on boot before opening SQLite / WAL descriptors
 try {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+    console.log(`📁 [STORAGE INIT] Initialized storage directory: ${DATA_DIR}`);
   }
 } catch (dirErr: any) {
   console.warn(`[STORAGE WARNING] Unable to create data directory ${DATA_DIR}:`, dirErr?.message || dirErr);

@@ -16,21 +16,29 @@ import {
   evaluateRightEntitlement,
   calculateComplianceDeadline,
   evaluatePiaRightsAlignment,
-  LawfulBasisType,
-  RightType
+  type LawfulBasisType,
+  type RightType
 } from './server/complianceEngine.ts';
 
-const DEFAULT_PORT = parseInt(process.env.PORT || '3000', 10) || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
-const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Auto-detect production mode: explicit NODE_ENV=production OR running compiled artifact from dist
+const isCompiledBundle = typeof __filename !== 'undefined' && (__filename.includes('dist') || __filename.endsWith('.cjs') || __filename.endsWith('server.js'));
+const hasBuiltAssets = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'));
+const IS_PROD = process.env.NODE_ENV === 'production' || (hasBuiltAssets && isCompiledBundle);
+
+if (IS_PROD && process.env.NODE_ENV !== 'production') {
+  process.env.NODE_ENV = 'production';
+}
 
 let serverInstance: import('http').Server | null = null;
 
 function bindHttpServer(app: express.Application, port: number): Promise<import('http').Server> {
   return new Promise((resolve, reject) => {
-    if (IS_PROD) {
+    if (process.env.NODE_ENV === 'production') {
       // In production, bind strictly to the configured port without incrementing.
-      // Changing ports in production container environments (Replit, Cloud Run, K8s) breaks ingress routing and health checks.
+      // Changing ports in production container environments (Replit, Railway, Cloud Run, K8s) breaks ingress routing and health checks.
       const server = app.listen(port, HOST, () => {
         console.log(`🛡️ RightsFlow Metrics Node Server [PRODUCTION] running on http://${HOST}:${port}`);
         resolve(server);
@@ -69,23 +77,27 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
-  // Initialize DB
-  await getDb();
+  // Initialize DB asynchronously without blocking server start
+  try {
+    await getDb();
+  } catch (dbErr: any) {
+    console.error('⚠️ [DB INIT WARNING] Non-fatal database initialization warning:', dbErr?.message || dbErr);
+  }
 
   // ==========================================================================
-  // 1. HEALTH & TELEMETRY API (ZERO-DEPENDENCY & REPLIT/K8S COMPLIANT)
+  // 1. HEALTH & TELEMETRY API (ZERO-DEPENDENCY & REPLIT/RAILWAY/K8S COMPLIANT)
   // ==========================================================================
 
   // Fast zero-dependency liveness/readiness probe
-  app.get('/healthz', (_req, res) => {
+  app.get(['/healthz', '/health'], (_req, res) => {
     res.status(200).json({
       status: 'ok',
-      uptime: Math.round(process.uptime()),
-      timestamp: new Date().toISOString()
+      uptime: process.uptime(),
+      timestamp: Date.now()
     });
   });
 
-  // Comprehensive health & telemetry endpoint (resilient against DB cold-starts)
+  // Zero-dependency non-blocking /api/health probe with telemetry enrichment
   app.get('/api/health', (_req, res) => {
     const memory = process.memoryUsage();
     let dbStats: any = null;
@@ -105,8 +117,9 @@ async function startServer() {
 
     res.status(200).json({
       status: 'ok',
+      uptime: process.uptime(),
+      timestamp: Date.now(),
       systemTime: new Date().toISOString(),
-      uptime: Math.round(process.uptime()),
       uptimeSeconds: Math.round(process.uptime()),
       environment: {
         networkIsolation: 'ZERO_TRUST_AIR_GAPPED',
@@ -121,7 +134,7 @@ async function startServer() {
         externalMb: Math.round((memory.external / (1024 * 1024)) * 100) / 100
       },
       database: dbStats || {
-        engine: 'SQLite 3.45 WAL-Mode Embedded',
+        engine: 'SQLite 3.45 (Embedded WASM / Strict WAL-Mode)',
         journalMode: 'WAL (Write-Ahead-Log)',
         dbSizeBytes: 0,
         walSizeBytes: 0,
@@ -1408,14 +1421,14 @@ async function startServer() {
   // ==========================================================================
   // VITE & STATIC SPA SERVING (STRICT ISOLATION BEHIND NODE_ENV)
   // ==========================================================================
-  const distPath = path.join(process.cwd(), 'dist');
+  const distPath = path.resolve(process.cwd(), 'dist');
 
-  if (IS_PROD) {
+  if (process.env.NODE_ENV === 'production') {
+    // Production mode: strictly serve pre-compiled static assets from dist/
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
-      // Fallback catch-all handler for Single Page Applications (SPA) excluding API and health checks
       app.get('*', (req, res, next) => {
-        if (req.path.startsWith('/api') || req.path === '/healthz') {
+        if (req.path.startsWith('/api') || req.path === '/healthz' || req.path === '/health') {
           return next();
         }
         res.sendFile(path.join(distPath, 'index.html'));
@@ -1423,22 +1436,21 @@ async function startServer() {
     } else {
       console.warn(`[PRODUCTION WARNING] 'dist' directory not found at ${distPath}. Pre-compiled assets missing.`);
       app.get('*', (req, res, next) => {
-        if (req.path.startsWith('/api') || req.path === '/healthz') {
+        if (req.path.startsWith('/api') || req.path === '/healthz' || req.path === '/health') {
           return next();
         }
         res.status(503).send('Production build not found. Please run "npm run build" before starting the server.');
       });
     }
   } else {
-    // Development mode: Vite middleware with isolated HMR (zero port collisions)
+    // Development mode ONLY: Vite middleware with isolated HMR configuration (zero port collisions)
     try {
       const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         server: {
           middlewareMode: true,
-          hmr: {
-            server: undefined,
-            port: undefined // Prevent independent HMR websocket port collisions (e.g. 24678)
+          hmr: process.env.DISABLE_HMR === 'true' ? false : {
+            port: undefined
           }
         },
         appType: 'spa'
@@ -1449,7 +1461,7 @@ async function startServer() {
     }
   }
 
-  serverInstance = await bindHttpServer(app, DEFAULT_PORT);
+  serverInstance = await bindHttpServer(app, PORT);
 
   // Graceful Lifecycle Shutdown Handler (SIGINT / SIGTERM)
   const gracefulShutdown = (signal: string) => {
